@@ -10,7 +10,7 @@ Va0 = MAV.Va0
 Vg = MAV.Va0
 
 #----------roll loop-------------
-wn_phi = 15.0      # tuning parameter
+wn_phi = 10.0      # tuning parameter
 zeta_phi = 0.707   # tuning parameter
 
 a_phi_1 = -0.5*MAV.rho*Va0**2*MAV.S_wing*MAV.b*MAV.C_p_p*MAV.b/(2.0*Va0)
