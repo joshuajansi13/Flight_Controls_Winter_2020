@@ -17,7 +17,7 @@ class msg_path:
         self.airspeed = 25
         # origin of the straight path line (r)
         self.line_origin = np.array([[0.0, 0.0, 0.0]]).T
-        # direction of line -unit vector- (q)
+        # direction of line -unit vector- (q) qn, qe, qd
         self.line_direction = np.array([[1.0, 0.0, 0.0]]).T
         # center of the orbit (c)
         self.orbit_center = np.array([[0.0, 0.0, 0.0]]).T

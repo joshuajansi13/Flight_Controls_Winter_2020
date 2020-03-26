@@ -44,7 +44,7 @@ commands = msg_autopilot()
 Va_command = signals(dc_offset=25.0,
                      amplitude=3.0,
                      start_time=2.0,
-                     frequency = 0.01)
+                     frequency=0.01)
 h_command = signals(dc_offset=100.0,
                     amplitude=10.0,
                     start_time=0.0,
@@ -60,7 +60,6 @@ sim_time = SIM.start_time
 # main simulation loop
 print("Press Command-Q to exit...")
 while sim_time < SIM.end_time:
-
     # -------autopilot commands-------------
     commands.airspeed_command = Va_command.square(sim_time)
     commands.course_command = chi_command.square(sim_time)
@@ -69,7 +68,7 @@ while sim_time < SIM.end_time:
     # -------controller-------------
     measurements = mav.sensors  # get sensor measurements
     estimated_state = obsv.update(measurements, sim_time)  # estimate states from measurements
-    delta, commanded_state = ctrl.update(commands, mav.msg_true_state)  # uses estimated states in control
+    delta, commanded_state = ctrl.update(commands, estimated_state)  # uses estimated states in control
 
     # -------physical system-------------
     current_wind = wind.update()  # get the new wind vector
@@ -81,8 +80,6 @@ while sim_time < SIM.end_time:
                      estimated_state,  # estimated states
                      commanded_state,  # commanded states
                      SIM.ts_simulation)
-    # sensor_view.update(mav.sensors,  # sensor values
-    #                    SIM.ts_simulation)
     if VIDEO is True:
         video.update(sim_time)
 

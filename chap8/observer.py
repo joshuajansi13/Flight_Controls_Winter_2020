@@ -76,7 +76,7 @@ class alpha_filter:
 class ekf_attitude:
     # implement continous-discrete EKF to estimate roll and pitch angles
     def __init__(self):
-        self.Q = 1e-10 * np.eye(2)                         # tuning param
+        self.Q = 1e-9 * np.eye(2)                         # tuning param
         self.Q_gyro = np.eye(4) * SENSOR.gyro_sigma**2
         self.R_accel = np.eye(3) * SENSOR.accel_sigma**2
         self.N = 5  # number of prediction step per sample
@@ -138,12 +138,10 @@ class ekf_attitude:
 
     def measurement_update(self, state, measurement):
         # measurement updates
-        # self.accel_threshold = stats.chi2.isf(q=0.01, df=3)
         h = self.h(self.xhat, state)
         C = jacobian(self.h, self.xhat, state)
         y = np.array([[measurement.accel_x, measurement.accel_y, measurement.accel_z]]).T
         # for i in range(0, 3):
-        # if np.abs(y[i]-h[i,0]) < threshold:
         S_inv = np.linalg.inv(self.R_accel + C @ self.P @ C.T)
         if stats.chi2.sf((y-h).T @ S_inv @ (y-h), df=3) < 0.01:
             L = self.P @ C.T @ S_inv
@@ -154,11 +152,11 @@ class ekf_attitude:
 class ekf_position:
     # implement continous-discrete EKF to estimate pn, pe, chi, Vg
     def __init__(self):
-        self.Q = 1e-2 * np.eye(7)
+        self.Q = 1e-1 * np.eye(7)
         self.R = np.diag([SENSOR.gps_n_sigma**2, SENSOR.gps_e_sigma**2,
                           SENSOR.gps_course_sigma**2, SENSOR.gps_Vg_sigma**2])
-        self.R_pseudo = 0.01 * np.eye(2)
-        self.N = 10  # number of prediction step per sample
+        self.R_pseudo = 1e-2 * np.eye(2)
+        self.N = 5  # number of prediction step per sample
         self.Ts = SIM.ts_control / self.N
         self.xhat = np.array([[MAV.pn0], [MAV.pe0], [MAV.Va0], [MAV.psi0], [0.0],
                              [0.0], [MAV.psi0]])  # initialize pn, pe, Vg, chi, wn, we, psi
@@ -212,12 +210,13 @@ class ekf_position:
 
     def h_pseudo(self, x, state):
         # measurement model for wind triangle pseudo measurement
-        Va = state.Va
-        psi = state.psi
         Vg = x.item(2)
         chi = x.item(3)
+        psi = x.item(6)
         wn = x.item(4)
         we = x.item(5)
+        Va = state.Va
+
         _h = np.array([[Va*np.cos(psi) + wn - Vg*np.cos(chi)],
                        [Va*np.sin(psi) + we - Vg*np.sin(chi)]])
         return _h

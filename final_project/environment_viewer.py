@@ -1,8 +1,7 @@
 """
-mavsimPy: path drawing function
-    - Beard & McLain, PUP, 2012
-    - Update history:  
-        1/8/2019 - RWB
+mavsimPy: setting up environment function
+    - Joshua Canlas
+    - Update history:
 """
 import sys
 sys.path.append("..")
