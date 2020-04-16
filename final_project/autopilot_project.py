@@ -1,13 +1,6 @@
-"""
-autopilot block for mavsim_python
-    - Beard & McLain, PUP, 2012
-    - Last Update:
-        2/6/2019 - RWB
-"""
 import sys
 import numpy as np
 sys.path.append('..')
-import parameters.aerosonde_parameters as MAV
 import parameters.control_parameters as AP
 from tools.transfer_function import transfer_function
 from tools.wrap import wrap
@@ -27,6 +20,11 @@ class autopilot:
                         ki=AP.course_ki,
                         Ts=ts_control,
                         limit=np.radians(30))
+        self.sideslip_from_rudder = pi_control(
+                        kp=AP.sideslip_kp,
+                        ki=AP.sideslip_ki,
+                        Ts=ts_control,
+                        limit=np.radians(45))
         self.yaw_damper = transfer_function(
                         num=np.array([[AP.yaw_damper_kp, 0]]),
                         den=np.array([[1, 1/AP.yaw_damper_tau_r]]),
@@ -41,48 +39,15 @@ class autopilot:
                         kp=AP.altitude_kp,
                         ki=AP.altitude_ki,
                         Ts=ts_control,
-                        limit=np.radians(15))
+                        limit=np.radians(30))
         self.airspeed_from_throttle = pi_control(
                         kp=AP.airspeed_throttle_kp,
                         ki=AP.airspeed_throttle_ki,
                         Ts=ts_control,
                         limit=1.0)
         self.commanded_state = msg_state()
-        self.state_regime = 1  # for state machine
-        self.i = 0
 
-    def update(self, cmd, state, at_rest):
-        # state regime:
-        # 1 = at rest
-        # 2 = take off (full throttle; regulate pitch to a fixed theta_c
-        # 3 = climb zone (full throttle; regulate airspeed by commanding pitch attitude)
-        # 4 = altitude hold zone (regulate altitude by commanding pitch attitude; regulate airspeed by commanding throttle)
-        # 5 = descend zone (zero throttle; regulate airspeed by commanding pitch attitude)
-
-        # TODO implement state machine
-        h_c = cmd.altitude_command
-        if self.state_regime == 1:  # at rest
-            theta_c = 0.
-            if not at_rest:
-                self.state_regime = 2
-        elif self.state_regime == 2:  # going down the runway
-            theta_c = 0.
-            if state.h >= 1:
-                self.state_regime = 3
-        elif self.state_regime == 3:  # pitch up and take off
-            theta_c = np.radians(10)
-            if state.h > AP.h_takeoff:
-                self.state_regime = 4
-        elif self.state_regime == 4:  # climb zone up to commanded altitude and steady level flight and descent
-            theta_c = self.altitude_from_pitch.update(h_c, state.h)
-            if state.h <= 1:
-                self.state_regime = 5
-        elif self.state_regime == 5:  # flare
-            theta_c = np.radians(5)
-            if state.Va <= 15:
-                self.state_regime = 6
-        elif self.state_regime == 6:  # landed
-            theta_c = self.altitude_from_pitch.update(h_c, state.h)
+    def update(self, cmd, state):
 
         # lateral autopilot
         chi_c = wrap(cmd.course_command, state.chi)
@@ -91,14 +56,10 @@ class autopilot:
         delta_r = self.yaw_damper.update(state.r)
 
         # longitudinal autopilot
-        # h_c = cmd.altitude_command
-        # theta_c = self.altitude_from_pitch.update(h_c, state.h)
+        h_c = cmd.altitude_command
+        theta_c = self.altitude_from_pitch.update(h_c, state.h)
         delta_e = self.pitch_from_elevator.update(theta_c, state.theta, state.q)
-        if at_rest:
-            delta_t = 0.
-        else:
-            delta_t = MAV.delta_t_star + self.airspeed_from_throttle.update(
-                cmd.airspeed_command, state.Va)
+        delta_t = self.airspeed_from_throttle.update(cmd.airspeed_command, state.Va)
 
         # construct output and commanded states
         delta = np.array([[delta_e], [delta_a], [delta_r], [delta_t]])

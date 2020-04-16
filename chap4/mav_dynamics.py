@@ -61,6 +61,7 @@ class mav_dynamics:
             wind is the wind vector in inertial coordinates
             Ts is the time step between function calls.
         '''
+
         # get forces and moments acting on rigid bod
         forces_moments = self._forces_moments(delta)
 
@@ -115,11 +116,9 @@ class mav_dynamics:
         q = state.item(11)
         r = state.item(12)
 
-        #   extract forces/moments
         fx = forces_moments.item(0)
         fy = forces_moments.item(1)
         fz = forces_moments.item(2)
-
         l = forces_moments.item(3)
         m = forces_moments.item(4)
         n = forces_moments.item(5)
@@ -184,7 +183,10 @@ class mav_dynamics:
         # compute angle of attack
         self._alpha = np.arctan2(self._wr, self._ur)
         # compute sideslip angle
-        self._beta = np.arcsin(self._vr / self._Va)
+        if self._Va == 0.0:
+            self._beta = 0.0
+        else:
+            self._beta = np.arcsin(self._vr / self._Va)
 
     def _forces_moments(self, delta):
         """
@@ -210,8 +212,14 @@ class mav_dynamics:
         delta_a = delta.item(1)
         delta_r = delta.item(2)
         delta_t = delta.item(3)
+
+        # min and max values for delta_t
         if delta_t < 0:
             delta_t = 0.0
+        elif delta_t > 1:
+            delta_t = 1.0
+        else:
+            delta_t = delta_t
 
         # drag coefficients
         C_D_q = MAV.C_D_q
@@ -243,6 +251,7 @@ class mav_dynamics:
 
         f_g = Quaternion2Rotation(self._state[6:10]).transpose() @ np.array(
             [[0], [0], [mass * g]])  # gravitational force
+        f_n = mass * g
 
         # Propeller Thrust Calculations
         # map delta throttle command (0 to 1) into motor input voltage
@@ -293,26 +302,44 @@ class mav_dynamics:
         C_Z_q = lambda alpha: -C_D_q * np.sin(alpha) - C_L_q * np.cos(alpha)
         C_Z_de = lambda alpha: -C_D_de * np.sin(alpha) - C_L_de * np.cos(alpha)
 
-        f_a = (0.5 * rho * Va ** 2 * S) * np.array(
-            [[C_X(a) + C_X_q(a) * (c / (2 * Va)) * q + C_X_de(a) * delta_e],
-             [C_Y_0 + C_Y_b * beta + C_Y_p * (b / (2 * Va)) * p + C_Y_r * (b / (
-                         2 * Va)) * r + C_Y_da * delta_a + C_Y_dr * delta_r],
-             [C_Z(a) + C_Z_q(a) * (c / (2 * Va)) * q + C_Z_de(a) * delta_e]])
+        if Va == 0.0:
+            f_a = np.array([[0.], [0.], [0.]])
+            # f_p = np.array([[0.], [0.], [0.]])
+        else:
+            f_a = (0.5 * rho * Va ** 2 * S) * np.array(
+                [[C_X(a) + C_X_q(a) * (c / (2 * Va)) * q + C_X_de(a) * delta_e],
+                 [C_Y_0 + C_Y_b * beta + C_Y_p * (b / (2 * Va)) * p + C_Y_r * (b / (
+                             2 * Va)) * r + C_Y_da * delta_a + C_Y_dr * delta_r],
+                 [C_Z(a) + C_Z_q(a) * (c / (2 * Va)) * q + C_Z_de(a) * delta_e]])
+
         f_total = f_g + f_a + f_p
+
         self.thrust = f_p.item(0)
         self._forces = np.array(
             [[f_total.item(0)], [f_total.item(1)], [f_total.item(2)]])
 
-        m_a = (0.5 * rho * Va ** 2 * S) * \
-              np.array([[b * (C_l_0 + C_l_b * beta + C_l_p * (b / (2 * Va)) * p + C_l_r *
-                              (b / (2 * Va)) * r + C_l_da * delta_a + C_l_dr * delta_r)],
-                        [c * (C_m_0 + C_m_a * a + C_m_q * (c / (2 * Va)) * q + C_m_de * delta_e)],
-                        [b * (C_n_0 + C_n_b * beta + C_n_p * (b / (2 * Va)) * p + C_n_r *
-                              (b / (2 * Va)) * r + C_n_da * delta_a + C_n_dr * delta_r)]])
+        if Va == 0.0:
+            m_a = np.array([[0.], [0.], [0.]])
+        else:
+            m_a = (0.5 * rho * Va ** 2 * S) * \
+                  np.array([[b * (C_l_0 + C_l_b * beta + C_l_p * (b / (2 * Va)) * p + C_l_r *
+                                  (b / (2 * Va)) * r + C_l_da * delta_a + C_l_dr * delta_r)],
+                            [c * (C_m_0 + C_m_a * a + C_m_q * (c / (2 * Va)) * q + C_m_de * delta_e)],
+                            [b * (C_n_0 + C_n_b * beta + C_n_p * (b / (2 * Va)) * p + C_n_r *
+                                  (b / (2 * Va)) * r + C_n_da * delta_a + C_n_dr * delta_r)]])
+
         m_total = m_a + m_p
 
-        return np.array([[f_total.item(0), f_total.item(1), f_total.item(2),
-                          m_total.item(0), m_total.item(1), m_total.item(2)]]).T
+        if self._state.item(2) < 1:
+            # mx_ground = m_total.item(0)
+            # mz_ground = m_total.item(2)
+            return np.array(
+                [[f_total.item(0), f_total.item(1), f_total.item(2) - f_n,
+                  0., m_total.item(1), 0.]]).T
+        else:
+            return np.array(
+                [[f_total.item(0), f_total.item(1), f_total.item(2) - f_n,
+                  m_total.item(0), m_total.item(1), m_total.item(2)]]).T
 
     def _update_msg_true_state(self):
         # update the class structure for the true state:

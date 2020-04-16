@@ -1,13 +1,19 @@
 import numpy as np
 from message_types.msg_waypoints import msg_waypoints
+from chap11.dubins_parameters import dubins_parameters
 
-
-class planRRT():
+class planRRTDubins():
     def __init__(self):
         self.waypoints = msg_waypoints()
-        self.segmentLength = 200  # standard length of path segments
+        self.segmentLength = 550  # standard length of path segments
+        self.waypoints.type = 'dubins'
+        self.dubins_path = dubins_parameters()
+        self.dubins_path.radius = np.inf
+        self.tree_courses = np.array([0.0])
 
-    def planPath(self, wpp_start, wpp_end, map):
+    def planPath(self, wpp_start, wpp_end, map, R):
+
+        self.dubins_path.radius = R
 
         # desired down position is down position of end node
         pd = wpp_end.item(2)
@@ -33,9 +39,13 @@ class planRRT():
         # find path with minimum cost to end_node
         path = self.findMinimumPath(tree, end_node)
         waypoints_smoothed = self.smoothPath(path, map)
-        self.waypoints.ned = np.hstack((waypoints_smoothed[:, :3].T,
-                                        waypoints_smoothed[-1, :3].reshape(-1, 1)))
+        self.waypoints.ned = waypoints_smoothed[:, :3].T
         self.waypoints.airspeed = np.ones(len(waypoints_smoothed)) * 25.0
+        self.waypoints.course[0, 0] = 0.0
+        for j in range(len(waypoints_smoothed) - 1):
+            self.waypoints.course[0, j + 1] = np.arctan2(
+                (self.waypoints.ned[1, j + 1] - self.waypoints.ned[1, j]),
+                (self.waypoints.ned[0, j + 1] - self.waypoints.ned[0, j]))
         self.waypoints.num_waypoints = len(waypoints_smoothed)
         return self.waypoints
 
@@ -64,15 +74,45 @@ class planRRT():
 
     def pointsAlongPath(self, start_node, end_node):  #, Del):
         N = 100  # points along path
+        d_theta = 0.1  # approx distance between arc points
+        points_arc1 = self.pointsAlongArc(self.dubins_path.p_s,
+                                          self.dubins_path.r1,
+                                          self.dubins_path.center_s,
+                                          self.dubins_path.dir_s, d_theta)
+        points_line = self.pointsAlongLine(self.dubins_path.r1, self.dubins_path.r2, N)
+        points_arc2 = self.pointsAlongArc(self.dubins_path.r2,
+                                          self.dubins_path.p_e,
+                                          self.dubins_path.center_e,
+                                          self.dubins_path.dir_e, d_theta)
+        points = np.vstack((points_arc1, points_line, points_arc2))
+        return points
+
+    def pointsAlongLine(self, p_s, p_e, N):
         # create vector pointing from start to end node
-        q = (end_node[0:3] - start_node[0:3]) / np.linalg.norm(end_node[0:3] - start_node[0:3])
+        q = (p_e - p_s) / np.linalg.norm(p_e - p_s)
         # find distance between each point along the path
-        dist = np.linalg.norm(end_node[0:3] - start_node[0:3]) / N
-        # initialize points with start node
-        points = start_node[0:3].reshape(1, 3)
+        dist = np.linalg.norm(p_e - p_s) / N
+        points = p_s.reshape(1, 3)
         for i in range(N):
-            # create an array with all of the points along the path
-            points = np.vstack((points, points[i, :] + q * dist))
+            points = np.vstack((points, points[i, :] + q.T * dist))
+        return points
+
+    def pointsAlongArc(self, p_s, p_e, c, dir, d_th):
+        p1 = (p_s - c).reshape(3, 1)
+        p2 = (p_e - c).reshape(3, 1)
+        p_i = p1
+        d_theta = dir * d_th
+        R = np.array([[np.cos(d_theta), -np.sin(d_theta), 0],
+                      [np.sin(d_theta), np.cos(d_theta), 0],
+                      [0, 0, 1]])
+        cost = 0
+        thresh = p2.T @ (R @ p2)
+        points = p_s.T
+        while cost < thresh:
+            p_i = R @ p_i
+            points = np.vstack((points, (p_i + c).T))
+            cost = p_i.T @ p2
+        points = np.vstack((points, p_e.T))
         return points
 
     def downAtNE(self, map, n, e):
@@ -87,14 +127,21 @@ class planRRT():
                                  p.item(2) - tree[:, 2]) ** 2
             parent = np.argmin(n_dist)
             n_closest = tree[parent, :3]
-            q = (p - n_closest)/np.linalg.norm(p - n_closest)
+            q = (p - n_closest) / np.linalg.norm(p - n_closest)
             v_star = n_closest + q * segmentLength
+            chi_s = self.tree_courses[parent]
+            chi_e = np.arctan2((v_star.item(1) - n_closest.item(1)),
+                               (v_star.item(0) - n_closest.item(0)))
+            self.dubins_path.update(n_closest[0:3].reshape(3, 1), chi_s,
+                                    v_star[0:3].reshape(3, 1), chi_e,
+                                    self.dubins_path.radius)
             if self.collision(n_closest, v_star, map):
                 continue
             else:
-                cost = n_dist[parent] + tree[parent, 3]
+                cost = self.dubins_path.length + tree[parent, 3]
                 n_new = np.append(v_star, [parent, cost, 0])
                 tree = np.vstack((tree, n_new))
+                self.tree_courses = np.append(self.tree_courses, chi_e)
                 valid_addition = True
         if np.linalg.norm(end_node[0:3] - v_star) < segmentLength:
             flag = 1
@@ -119,10 +166,20 @@ class planRRT():
         w_s = np.array([path[0, :]])
         i = 0
         j = 1
+        k = 0
         while j < len(path) - 1:
+            chi_s = self.tree_courses[int(path[i, 3])]
+            chi_e = np.arctan2((path[j+1, 1] - path[i, 1]), (path[j+1, 0] - path[i, 0]))
+            self.dubins_path.update(path[i, 0:3].reshape(3, 1), chi_s,
+                                    path[j + 1, 0:3].reshape(3, 1), chi_e,
+                                    self.dubins_path.radius)
             if self.collision(path[i, :], path[j+1, :], map):
                 w_s = np.vstack([w_s, path[j, :]])
+                k += 1
+                self.waypoints.course[0, k] = np.arctan2(
+                    (w_s[k, 1] - w_s[k - 1, 1]), (w_s[k, 0] - w_s[k - 1, 0]))
                 i = j
             j += 1
+        self.waypoints.course[0, 0] = self.waypoints.course[0, 1]
         w_s = np.vstack([w_s, path[-1, :]])
         return w_s

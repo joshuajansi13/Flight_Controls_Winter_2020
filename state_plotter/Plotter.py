@@ -20,11 +20,9 @@ class Plotter:
     """
     def __init__(self, plotting_frequency=1, time_window=15):
         ''' Initialize the Plotter
-
             plotting_freq: number of times the update function must be called
                            until the plotter actually outputs the graph.
                            (Can help reduce the slow-down caused by plotting)
-
             time_window:   how many seconds of data to appear in the plot
         '''
         self.time_window = time_window
@@ -49,6 +47,7 @@ class Plotter:
         self.app = pg.QtGui.QApplication([])
         self.window = pg.GraphicsWindow(title="States")
         self.window.resize(*self.default_window_size)
+        self.window.setGeometry(680, 0, 900, 1000)  # args: upper_left_x, upper_right_y, width, height
         self.window.setBackground(self.background_color)
         self.old_windows = []
         self.row_plot_count = 0
@@ -80,10 +79,8 @@ class Plotter:
 
     def define_input_vector(self, vector_name, input_vector):
         ''' Defines an input vector so measurements can be added in groups
-
             vector_name (string): name of the vector
             input_vector (list of strings): order of states in the vector
-
             Note: this does not add states or plots, so plots for the values in
             *input_vector* will need to also be added via the *add_plot* function
         '''
@@ -116,7 +113,6 @@ class Plotter:
 
     def add_plotbox(self, plotbox_args):
         ''' Adds a state and the necessary plot, curves, and data lists
-
             curve_names: name(s) of the state(s) to be plotted in the same plot window
                          (e.g. ['x', 'x_truth'] or ['x', 'x_command'])
         '''
@@ -129,17 +125,14 @@ class Plotter:
 
     def add_plotboxes(self, plotbox_arg_list):
         ''' Add multiple plotboxes, configured according to the structure of *plotbox_arg_list*
-
         Arguments:
             plotbox_arg_list (list of PlotboxArgs objects or strings): contains the arguments
                 for each plotbox to be added. If the list is two-dimensional, the plotboxes
                 will be added according to the list structure:
-
                 Example:
                     [['x', 'y'],           would produce a plot with x and y on
                      ['u', 'v', 'w'],  --> the first row, u, v, and w on the 2nd,
                      ['phi']]              and phi on the 3rd.
-
         '''
         if isinstance(plotbox_arg_list[0], list):
             # Base row size on list length
@@ -154,14 +147,12 @@ class Plotter:
 
     def add_vector_measurement(self, vector_name, vector_values, time, sigma_values=None, rad2deg=False):
         '''Adds a group of measurements in vector form
-
             vector_name (string): name given the vector through the *define_input_vector*
                                   function
             vector_values (list of numbers): values for each of the states in the
                           order defined in the *define_input_vector* function
             time: time stamp for the values in the vector
             rad2deg: Flag to convert the state value from radians to degrees
-
         '''
         if len(vector_values) != len(self.input_vectors[vector_name]):
             raise ValueError("State vector length mismatch. \
@@ -174,7 +165,6 @@ class Plotter:
 
     def add_measurement(self, state_name, state_val, time, sigma=0.0):
         '''Adds a measurement for the given state
-
             state_name (string): name of the state
             state_val (float): value to be added for the state
             time (float): time (in seconds) of the measurement

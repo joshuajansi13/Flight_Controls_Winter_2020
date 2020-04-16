@@ -6,8 +6,10 @@ import parameters.aerosonde_parameters as MAV
 
 gravity = MAV.gravity
 # sigma = ??
-Va0 = MAV.Va0
-Vg = MAV.Va0
+# Va0 = MAV.Va0
+# Vg = MAV.Va0
+Va0 = MAV.Va0_project
+Vg = MAV.Va0_project
 
 #----------roll loop-------------
 wn_phi = 15.0      # tuning parameter
@@ -43,8 +45,8 @@ yaw_damper_tau_r = 0.05  # tune
 yaw_damper_kp = 0.5
 
 #----------pitch loop-------------
-wn_theta = 25.0
-zeta_theta = 1.707
+wn_theta = 30.0
+zeta_theta = 0.707
 
 a_t_1 = -MAV.rho*Va0**2*MAV.c*MAV.S_wing/(2*MAV.Jy)*MAV.C_m_q*MAV.c/(2.0*Va0)
 a_t_2 = -MAV.rho*Va0**2*MAV.c*MAV.S_wing/(2*MAV.Jy)*MAV.C_m_alpha
@@ -61,11 +63,13 @@ zeta_h = 1.5
 
 altitude_kp = 2*zeta_h*wn_h / (K_theta_DC * Va0)
 altitude_ki = wn_h**2 / (K_theta_DC*Va0)
-altitude_zone = 500
+h_takeoff = 50.0
+# h_hold = 150.0
+
 
 #---------airspeed hold using throttle---------------
-wn_V = 9.0
-zeta_V = 0.9
+wn_V = 10.0
+zeta_V = 10.0
 
 a_v_1 = MAV.rho*MAV.Va_star*MAV.S_wing/MAV.mass*(MAV.C_D_0 + MAV.C_D_alpha*MAV.alpha_star + MAV.C_D_delta_e*MAV.delta_e_star) + MAV.rho*MAV.S_prop/MAV.mass*MAV.C_prop*MAV.Va_star
 a_v_2 = MAV.rho*MAV.S_prop/MAV.mass*MAV.C_prop*MAV.k_motor**2*MAV.delta_t_star

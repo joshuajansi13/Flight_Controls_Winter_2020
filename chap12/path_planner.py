@@ -8,17 +8,22 @@ import numpy as np
 import sys
 sys.path.append('..')
 from message_types.msg_waypoints import msg_waypoints
+from chap12.planRRT import planRRT
+from chap12.planRRTDubins import planRRTDubins
+import parameters.aerosonde_parameters as MAV
 
 class path_planner:
     def __init__(self):
         # waypoints definition
         self.waypoints = msg_waypoints()
+        self.rrt = planRRT()
+        self.rrt_dubins = planRRTDubins()
 
-    def update(self, map, state):
+    def update(self, map, state, R):
         # this flag is set for one time step to signal a redraw in the viewer
         # planner_flag = 1  # return simple waypoint path
-        planner_flag = 2  # return dubins waypoint path
-        # planner_flag = 3  # plan path through city using straight-line RRT
+        # planner_flag = 2  # return dubins waypoint path
+        planner_flag = 3  # plan path through city using straight-line RRT
         # planner_flag = 4  # plan path through city using dubins RRT
         if planner_flag == 1:
             self.waypoints.type = 'fillet'
@@ -52,27 +57,58 @@ class path_planner:
             self.waypoints.num_waypoints = 0
             Va = 25
             # current configuration vector format: N, E, D, Va
-            wpp_start = np.array([state.n,
-                                  state.e,
-                                  -state.h,
+            wpp_start = np.array([state.pn,
+                                  state.pe,
+                                  # -state.h,
+                                  MAV.steady_flight,
                                   state.Va])
-            if np.linalg.norm(np.array([state.n, state.e, -state.h])-np.array([map.city_width, map.city_width, -state.h])) == 0:
+            if np.linalg.norm(np.array([state.pn, state.pe, -state.h])-np.array([map.city_width, map.city_width, -state.h])) == 0:
                 wpp_end = np.array([0,
                                     0,
-                                    -state.h,
+                                    MAV.steady_flight,
+                                    # -state.h,
                                     Va])
             else:
                 wpp_end = np.array([map.city_width,
                                     map.city_width,
-                                    -state.h,
+                                    MAV.steady_flight,
+                                    # -state.h,
                                     Va])
 
             waypoints = self.rrt.planPath(wpp_start, wpp_end, map)
             self.waypoints.ned = waypoints.ned
             self.waypoints.airspeed = waypoints.airspeed
             self.waypoints.num_waypoints = waypoints.num_waypoints
-        # elif planner_flag == 4:
+        elif planner_flag == 4:
+            self.waypoints.type = 'dubins'
+            self.waypoints.num_waypoints = 0
+            Va = 25
+            # current configuration vector format: N, E, D, Va
+            wpp_start = np.array([state.pn,
+                                  state.pe,
+                                  # -state.h,
+                                  MAV.pd0,
+                                  state.Va])
+            if np.linalg.norm(
+                    np.array([state.pn, state.pe, -state.h]) - np.array(
+                            [map.city_width, map.city_width, -state.h])) == 0:
+                wpp_end = np.array([0,
+                                    0,
+                                    MAV.pd0,
+                                    # -state.h,
+                                    Va])
+            else:
+                wpp_end = np.array([map.city_width,
+                                    map.city_width,
+                                    MAV.pd0,
+                                    # -state.h,
+                                    Va])
 
+            waypoints = self.rrt_dubins.planPath(wpp_start, wpp_end, map, R)
+            self.waypoints.num_waypoints = waypoints.num_waypoints
+            self.waypoints.ned[:, 0:self.waypoints.num_waypoints] = waypoints.ned
+            self.waypoints.airspeed[:, 0:self.waypoints.num_waypoints] = waypoints.airspeed
+            self.waypoints.course = waypoints.course
         else:
             print("Error in Path Planner: Undefined planner type.")
 
